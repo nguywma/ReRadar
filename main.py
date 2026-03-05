@@ -50,7 +50,7 @@ def get_args():
 
     parser.add_argument('--runsPath', type=str, default='./runs/', help='Path to save runs to.')
     parser.add_argument('--cachePath', type=str, default='./cache/', help='Path to save cache to.')
-    parser.add_argument('--network', type=str, default='rein', choices=['rein', 'e18rein','e34rein','erein'])
+    parser.add_argument('--network', type=str, default='rein', choices=['rein', 'e18rein','e34rein','erein', 'rerein'])
 
     # parser.add_argument('--load_from', type=str, default='runs/Aug08_10-17-29', help='Path to load checkpoint from, for resuming training or testing.')# original model 
     # parser.add_argument('--load_from', type=str, default='runs/Jan07_17-57-05', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 24-26, temp 0.1 
@@ -365,7 +365,7 @@ def testPCA(eval_set, epoch=0, write_tboard=False):
     pass
     # return recalls
 
-def getClusters(cluster_set):
+def getClusters(cluster_set, num_feat=128, num_cluster = 64):
     n_descriptors = 10000
     n_per_image = 25
     n_im = ceil(n_descriptors/n_per_image)
@@ -384,13 +384,13 @@ def getClusters(cluster_set):
             model.eval()
             print('====> Extracting Descriptors')
             all_feats = h5.create_dataset("descriptors", 
-                        [n_descriptors, 128], 
+                        [n_descriptors, num_feat], 
                         dtype=np.float32)
 
             for iteration, (query, _, _, _) in enumerate(data_loader, 1):
                 query = query.to(device)
                 local_feat, _, _ = model(query)
-                local_feat = local_feat.view(query.size(0), 128, -1).permute(0, 2, 1)
+                local_feat = local_feat.view(query.size(0), num_feat, -1).permute(0, 2, 1)
                 
                 batchix = (iteration-1)*opt.cacheBatchSize*n_per_image
                 for ix in range(local_feat.size(0)):
@@ -405,7 +405,7 @@ def getClusters(cluster_set):
         
         print('====> Clustering..')
         niter = 100
-        kmeans = faiss.Kmeans(128, 64, niter=niter, verbose=False)
+        kmeans = faiss.Kmeans(num_feat,num_cluster, niter=niter, verbose=False)
         kmeans.train(all_feats[...])
 
         print('====> Storing centroids', kmeans.centroids.shape)
@@ -431,13 +431,15 @@ if __name__ == "__main__":
     torch.cuda.manual_seed(opt.seed)    
 
     if opt.network == 'rein':
-        from REIN import REIN
+        from model.REIN import REIN
     elif opt.network == 'erein':
-        from EREIN import REIN
+        from model.EREIN import REIN
     elif opt.network == 'e18rein':
-        from E18REIN import REIN
+        from model.E18REIN import REIN
     elif opt.network == 'e34rein':
-        from E34REIN import REIN
+        from model.E34REIN import REIN
+    elif opt.network == 'rerein':
+        from model.REREIN import REIN
     else:
         raise ValueError(f"Unknown network: {opt.network}")
 
@@ -449,16 +451,58 @@ if __name__ == "__main__":
         if opt.ckpt.lower() == 'latest':
             resume_ckpt = join(opt.load_from,  'checkpoint.pth.tar')
         elif opt.ckpt.lower() == 'best':
-            resume_ckpt = join(opt.load_from, 'model_best.pth.tar')
+            resume_ckpt = join(opt.load_from, 'model_best.pt')
 
         if isfile(resume_ckpt):
             print("=> loading checkpoint '{}'".format(resume_ckpt))
             checkpoint = torch.load(resume_ckpt, map_location=lambda storage, loc: storage)
-            model.load_state_dict(checkpoint['state_dict'])
-            model = model.to(device)
+            # if opt.network == 'rerein':
+            #     # model.load_state_dict(checkpoint['state_dict'])
+            #     new_state_dict = {}
+            #     state_dict = checkpoint
+            #     for k, v in state_dict.items():
+            #         # Example: change 'model.model.conv1' to 'backbone.model.conv1'
+            #         name = k.replace('model.model', 'backbone.model') 
+            #         new_state_dict[name] = v
 
-            print("=> loaded checkpoint '{}' (epoch {})"
-                .format(resume_ckpt, checkpoint['epoch']))
+            #     # 4. Load the fixed dictionary
+            #     model.load_state_dict(new_state_dict, strict=False)
+            #     # model.load_state_dict(checkpoint)
+            #     model = model.to(device)
+            #     print("=> loaded checkpoint '{}'"
+            #         .format(resume_ckpt))
+            if opt.network == 'rerein':
+                print("=> Specialized loading for REREIN backbone...")
+                new_state_dict = {}
+                state_dict = checkpoint
+                for k, v in state_dict.items():
+                    # Map backbone weights: e.g., 'model.conv1' -> 'backbone.model.conv1'
+                    # Adjust the string replacement based on your specific saved key structure
+                    name = k.replace('model.model', 'backbone.model') #if k.startswith('model.') else f'backbone.{k}'
+                    new_state_dict[name] = v
+
+                # Load backbone weights (strict=False because NetVLAD is missing from checkpoint)
+                msg = model.load_state_dict(new_state_dict, strict=False)
+                print(f"=> Missing keys (expected): {msg.missing_keys}")
+                
+                # --- INITIALIZE NETVLAD SINCE IT WAS NOT IN CHECKPOINT ---
+                initcache = join(opt.cachePath, 'desc_cen.hdf5')
+                if not isfile(initcache):
+                    print('===> Checkpoint only had backbone. Calculating clusters for NetVLAD...')
+                    # Use a training subset to build clusters
+                    cluster_set = oord_dataset.TrainingDataset(dataset_path=opt.path)
+                    getClusters(cluster_set, num_feat=128, num_cluster=64)
+                
+                with h5py.File(initcache, mode='r') as h5:
+                    clsts = h5.get("centroids")[...]
+                    traindescs = h5.get("descriptors")[...]
+                    model.pooling.init_params(clsts, traindescs)
+                print("=> NetVLAD initialized from clusters.")
+            else: 
+                model.load_state_dict(checkpoint['state_dict'])
+                model = model.to(device)
+                print("=> loaded checkpoint '{}' (epoch {})"
+                    .format(resume_ckpt, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(resume_ckpt))
     else:

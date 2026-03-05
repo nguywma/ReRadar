@@ -73,7 +73,7 @@ class EquivariantResBlock(enn.EquivariantModule):
         self.conv1 = enn.R2Conv(in_type, out_type, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = enn.InnerBatchNorm(out_type)
         self.relu = enn.ReLU(out_type, inplace=True)
-        self.conv2 = enn.R2Conv(out_type, out_type, kernel_size=3, padding=1, bias=False)
+        self.conv2 = enn.R2Conv(out_type, out_type, kernel_size=3, padding=1, bias=False, frequencies_cutoff=lambda r: 3 * r)
         self.bn2 = enn.InnerBatchNorm(out_type)
         
         # Shortcut connection to match dimensions
