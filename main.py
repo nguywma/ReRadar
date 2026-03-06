@@ -439,7 +439,7 @@ if __name__ == "__main__":
     elif opt.network == 'e34rein':
         from model.E34REIN import REIN
     elif opt.network == 'rerein':
-        from model.REREIN import REIN
+        from model.RE50REIN import REIN
     else:
         raise ValueError(f"Unknown network: {opt.network}")
 
@@ -451,7 +451,7 @@ if __name__ == "__main__":
         if opt.ckpt.lower() == 'latest':
             resume_ckpt = join(opt.load_from,  'checkpoint.pth.tar')
         elif opt.ckpt.lower() == 'best':
-            resume_ckpt = join(opt.load_from, 'model_best.pt')
+            resume_ckpt = join(opt.load_from, 'model_best.pth')
 
         if isfile(resume_ckpt):
             print("=> loading checkpoint '{}'".format(resume_ckpt))
@@ -474,12 +474,14 @@ if __name__ == "__main__":
             if opt.network == 'rerein':
                 print("=> Specialized loading for REREIN backbone...")
                 new_state_dict = {}
-                state_dict = checkpoint
+                state_dict = checkpoint['state_dict']
+                # for k in state_dict.keys():
+                #     print(k)
+                # print(checkpoint.keys())
                 for k, v in state_dict.items():
-                    # Map backbone weights: e.g., 'model.conv1' -> 'backbone.model.conv1'
-                    # Adjust the string replacement based on your specific saved key structure
-                    name = k.replace('model.model', 'backbone.model') #if k.startswith('model.') else f'backbone.{k}'
-                    new_state_dict[name] = v
+                    new_key = "rem.encoder." + k
+                    new_state_dict[new_key] = v
+
 
                 # Load backbone weights (strict=False because NetVLAD is missing from checkpoint)
                 msg = model.load_state_dict(new_state_dict, strict=False)
@@ -491,7 +493,7 @@ if __name__ == "__main__":
                     print('===> Checkpoint only had backbone. Calculating clusters for NetVLAD...')
                     # Use a training subset to build clusters
                     cluster_set = oord_dataset.TrainingDataset(dataset_path=opt.path)
-                    getClusters(cluster_set, num_feat=128, num_cluster=64)
+                    getClusters(cluster_set, num_feat=512, num_cluster=64)
                 
                 with h5py.File(initcache, mode='r') as h5:
                     clsts = h5.get("centroids")[...]
@@ -510,7 +512,7 @@ if __name__ == "__main__":
         if not isfile(initcache):
             train_set = oord_dataset.TrainingDataset()
             print('===> Calculating descriptors and clusters')
-            getClusters(train_set)
+            getClusters(train_set,512)
         with h5py.File(initcache, mode='r') as h5: 
             clsts = h5.get("centroids")[...]
             traindescs = h5.get("descriptors")[...]

@@ -1,6 +1,6 @@
 import torch
 import matplotlib.pyplot as plt
-from model.E34REIN import REIN 
+from model.RE50REIN import REIN 
 import cv2
 import numpy as np 
 import torch.nn.functional as F
@@ -70,7 +70,7 @@ def load_img(path, slice_angle=0, device=None):
     return img
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-slice_angle = 90              
+slice_angle = 90
 # ----- Load images -----
 img1 = load_img('../../oord_data/cartesian/Bellmouth_1_resize/1637842717347873.png')
 img2 = load_img('../../oord_data/cartesian/Bellmouth_1_resize/1637842717347873.png', slice_angle)
@@ -78,12 +78,12 @@ angles = -torch.arange(0,359.00001,360.0/8)/180*torch.pi
 print(img1.shape)
 # ----- Load model -----
 model = REIN().to(device)
-# checkpoint = torch.load(
-#     'runs/rerein/model_best.pt',
-#     map_location=lambda storage, loc: storage,
-#     weights_only=False
-# )
-# model.load_state_dict(checkpoint['state_dict'])
+checkpoint = torch.load(
+    'runs/re50/model_best.pth',
+    map_location=lambda storage, loc: storage,
+    weights_only=False
+)
+model.load_state_dict(checkpoint['state_dict'], strict=False)
 # model.load_state_dict(checkpoint, strict=False)
 model.eval()
 
