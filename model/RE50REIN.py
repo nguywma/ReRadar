@@ -148,6 +148,7 @@ class REIN(nn.Module):
         super(REIN, self).__init__()
         self.rem = REM_R50()
         self.pooling = NetVLAD(num_clusters=num_clusters, dim=512)
+        self.global_feat_dim = 512
     
     def forward(self, x):
         out1, local_feats = self.rem(x)

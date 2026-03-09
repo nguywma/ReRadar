@@ -368,7 +368,7 @@ def collate_fn(batch):
     return query, positive, negatives, indices
 
 class TrainingDataset(data.Dataset):
-    def __init__(self, dataset_path = './datasets/datasets/KITTI/',seq='00'):
+    def __init__(self, dataset_path = './datasets/KITTI/',seq='00'):
         super().__init__()
 
         # bev path
