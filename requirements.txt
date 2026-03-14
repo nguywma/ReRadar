@@ -8,3 +8,6 @@ argparse
 h5py
 tensorboardX
 imgaug
+mmcv-full
+e2cnn
+escnn

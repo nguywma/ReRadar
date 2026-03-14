@@ -62,10 +62,8 @@ class NetVLAD(nn.Module):
         return vlad
     
 class REM_R50(nn.Module):
-    def __init__(self, from_scratch=True):
-        super(REM_R50, self).__init__()
-        
-        # Default Orientation in re_resnet.py is 8
+    def __init__(self, from_scratch=False):
+        super(REM_R50, self).__init__()        
         self.num_rotations = 8 
         
         # ResNet-50 configuration: 
@@ -98,8 +96,8 @@ class REM_R50(nn.Module):
         out = out.view(B, -1, self.num_rotations, H, W)
         equ_features, _ = torch.max(out, dim=2) # Shape: [B, 64, H, W]
 
-        # 3. Project 64 -> 128
-        features = self.projection(equ_features) # Now matches [128, 64, 1, 1]
+        # 3. Project 64 -> 512
+        features = self.projection(equ_features) # Now matches [512, 64, 1, 1]
 
         # 4. Spatial Interpolation
         out1 = F.interpolate(features, size=(x.size(2)//4, x.size(3)//4), 

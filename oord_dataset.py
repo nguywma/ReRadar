@@ -737,8 +737,8 @@ def evaluateResults(global_descs, datasets, local_feats=None, match_results_save
 
                 # RANSAC
                 H, mask, _ = rigidRansac(
-                    (np.array([[im_side//2, im_side//2]] - points1) * 0.4),
-                    (np.array([[im_side//2, im_side//2]] - points2) * 0.4)
+                    (np.array([[im_side//2, im_side//2]] - points1) * 0.256),
+                    (np.array([[im_side//2, im_side//2]] - points2) * 0.256)
                 )
 
                 # Error Calculation
