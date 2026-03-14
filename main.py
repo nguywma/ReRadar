@@ -50,7 +50,7 @@ def get_args():
 
     parser.add_argument('--runsPath', type=str, default='./runs/', help='Path to save runs to.')
     parser.add_argument('--cachePath', type=str, default='./cache/', help='Path to save cache to.')
-    parser.add_argument('--network', type=str, default='rein', choices=['rein', 'e18rein','e34rein','erein', 'rerein'])
+    parser.add_argument('--network', type=str, default='rerein', choices=['rein', 'e18rein','e34rein','erein', 'rerein'])
 
     # parser.add_argument('--load_from', type=str, default='runs/Aug08_10-17-29', help='Path to load checkpoint from, for resuming training or testing.')# original model 
     # parser.add_argument('--load_from', type=str, default='runs/Jan07_17-57-05', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 24-26, temp 0.1 
@@ -282,8 +282,10 @@ def train_epoch_infonce(epoch, model, train_set, optimizer, scheduler):
             print(f"==> Epoch[{epoch}]({iteration}/{n_batches}): Loss: {batch_loss:.4f} | LR: {current_lr:.8f}")
             
 
-    # optimizer.zero_grad()   
-    scheduler.step()
+    # optimizer.zero_grad()
+    if scheduler is not None:
+        scheduler.step()   
+    # scheduler.step()
     avg_loss = epoch_loss / n_batches
 
     print("===> Epoch {} Complete: Avg. Loss: {:.4f}".format(epoch, avg_loss), 
@@ -451,7 +453,7 @@ if __name__ == "__main__":
         if opt.ckpt.lower() == 'latest':
             resume_ckpt = join(opt.load_from,  'checkpoint.pth.tar')
         elif opt.ckpt.lower() == 'best':
-            resume_ckpt = join(opt.load_from, 'model_best.pth')
+            resume_ckpt = join(opt.load_from, 'model_best.pth.tar')
 
         if isfile(resume_ckpt):
             print("=> loading checkpoint '{}'".format(resume_ckpt))
@@ -471,7 +473,7 @@ if __name__ == "__main__":
             #     model = model.to(device)
             #     print("=> loaded checkpoint '{}'"
             #         .format(resume_ckpt))
-            if opt.network == 'rerein':
+            if opt.network == 're1rein':
                 print("=> Specialized loading for REREIN backbone...")
                 new_state_dict = {}
                 state_dict = checkpoint['state_dict']
@@ -555,8 +557,9 @@ if __name__ == "__main__":
             # Step Decay: Multiply by lrGamma every lrStep
             return opt.lrGamma ** (current_epoch // opt.lrStep)
 
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
-        best_score = 0
+        # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+        scheduler = None 
+        best_score = 0  
 
         # for epoch in range(opt.nEpochs):
         #     avg_loss = train_epoch(epoch, model, train_set)
@@ -568,7 +571,6 @@ if __name__ == "__main__":
 
         #     eval_seq =  [('Bellmouth_2', 'Bellmouth_1'),
         #     ('Twolochs_2', 'Twolochs_1'),
-        #     ('Hydro_1','Hydro_2'),
         #     ('Hydro_1','Hydro_3'),
         #     ('Maree_1','Maree_2')]
         #     eval_datasets = []
@@ -682,7 +684,7 @@ if __name__ == "__main__":
     elif opt.mode.lower() == 'test':
         print('===> Running evaluation step')
         print('====> Extracting Features of OORD and calculating recalls')
-        # eval_seq = [('Maree_1','Maree_2')]
+        eval_seq = [('Maree_1','Maree_2')]
         # eval_seq = [('Bellmouth_2', 'Bellmouth_1')]
         # eval_seq = [('Hydro_1','Hydro_2') ]#, ('Hydro_2', 'Hydro_1')]
         # eval_seq =  [('Bellmouth_2', 'Bellmouth_1'),
@@ -692,7 +694,7 @@ if __name__ == "__main__":
         #             ('Hydro_1','Hydro_2'),
         #             ('Hydro_1','Hydro_3'),
         #             ('Maree_1','Maree_2')]
-        eval_seq = [('Twolochs_2', 'Twolochs_1')]
+        # eval_seq = [('Twolochs_2', 'Twolochs_1')]
         for sub_seq in eval_seq:
             print(f"Processing {sub_seq}")
             eval_datasets = []
