@@ -1,3 +1,5 @@
+torch == 1.13.1
+torchvision == 0.14.1
 faiss-gpu
 numpy
 opencv-python
@@ -10,4 +12,3 @@ tensorboardX
 imgaug
 mmcv-full
 e2cnn
-escnn

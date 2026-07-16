@@ -1,6 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
-from model.RE50REIN import REIN 
+# from model.RE50REIN import REIN 
+from model.REIN import REIN
 import cv2
 import numpy as np 
 import torch.nn.functional as F
@@ -76,16 +77,18 @@ img1 = load_img('../../oord_data/cartesian/Bellmouth_1_resize/1637842717347873.p
 img2 = load_img('../../oord_data/cartesian/Bellmouth_1_resize/1637842717347873.png', slice_angle)
 angles = -torch.arange(0,359.00001,360.0/8)/180*torch.pi 
 print(img1.shape)
-# ----- Load model -----
+# ----- Load ReRadar model -----
 model = REIN().to(device)
 checkpoint = torch.load(
-    'runs/re50/model_best.pth',
+    # 'runs/re50_kitti_oord/model_best.pth.tar',
+    '/home/manh/radar/radar/radarradar/runs/Aug08_10-17-29/model_best.pth.tar',
     map_location=lambda storage, loc: storage,
     weights_only=False
 )
-model.load_state_dict(checkpoint['state_dict'], strict=False)
-# model.load_state_dict(checkpoint, strict=False)
+model.load_state_dict(checkpoint['state_dict'], strict=True)
+# model.load_state_dict(checkpoint, strict=True)
 model.eval()
+
 
 # ----- Forward pass -----
 with torch.no_grad():
@@ -128,31 +131,70 @@ feature_map_norm2_rot = feature_map_norm2_rot.squeeze().cpu().numpy()
 # ----- Compute difference -----
 feature_diff = np.abs(feature_map_norm1 - feature_map_norm2_rot)
 
-# ----- Visualization -----
-fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-axes = axes.ravel()
+# # ----- Visualization -----
+# fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+# axes = axes.ravel()
 
-axes[0].imshow(orig_img1)
-axes[0].set_title("Original Image 1", fontsize=16)
-axes[0].axis("off")
+# axes[0].imshow(orig_img1)
+# axes[0].set_title("Original Image 1", fontsize=16)
+# axes[0].axis("off")
 
-axes[1].imshow(orig_img2)
-axes[1].set_title(f"Original Image 2 (rotated {slice_angle}°)", fontsize=16)
-axes[1].axis("off")
+# axes[1].imshow(orig_img2)
+# axes[1].set_title(f"Original Image 2 (rotated {slice_angle}°)", fontsize=16)
+# axes[1].axis("off")
 
-axes[2].imshow(feature_diff, cmap='magma')
-axes[2].set_title("Difference (Feature Map 1 - Rotated Back 2)", fontsize=16)
-axes[2].axis("off")
+# axes[2].imshow(feature_diff, cmap='magma')
+# axes[2].set_title("Difference (Feature Map 1 - Rotated Back 2)", fontsize=16)
+# axes[2].axis("off")
 
-axes[3].imshow(feature_map_norm1, cmap='viridis')
-axes[3].set_title("Feature Map 1", fontsize=16)
-axes[3].axis("off")
+# axes[3].imshow(feature_map_norm1, cmap='viridis')
+# axes[3].set_title("Feature Map 1", fontsize=16)
+# axes[3].axis("off")
 
-axes[4].imshow(feature_map_norm2_rot, cmap='viridis')
-axes[4].set_title("Feature Map 2 (Rotated Back, via grid_sample)", fontsize=16)
-axes[4].axis("off")
+# axes[4].imshow(feature_map_norm2_rot, cmap='viridis')
+# axes[4].set_title("Feature Map 2 (Rotated Back, via grid_sample)", fontsize=16)
+# axes[4].axis("off")
 
-axes[5].axis("off")
+# axes[5].axis("off")
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
+
+import os
+
+# ----- Create output directory -----
+save_dir = "feature_outputs_resnet"
+os.makedirs(save_dir, exist_ok=True)
+
+# ----- Save original images -----
+plt.imsave(
+    os.path.join(save_dir, "original_image_1.png"),
+    orig_img1
+)
+
+plt.imsave(
+    os.path.join(save_dir, f"original_image_2_rotated_{slice_angle}.png"),
+    orig_img2
+)
+
+# ----- Save feature maps -----
+plt.imsave(
+    os.path.join(save_dir, "feature_map_1.png"),
+    feature_map_norm1,
+    cmap='viridis'
+)
+
+plt.imsave(
+    os.path.join(save_dir, "feature_map_2_rotated_back.png"),
+    feature_map_norm2_rot,
+    cmap='viridis'
+)
+
+# ----- Save difference map -----
+plt.imsave(
+    os.path.join(save_dir, "feature_difference.png"),
+    feature_diff,
+    cmap='magma'
+)
+
+print(f"Saved outputs to: {save_dir}")
