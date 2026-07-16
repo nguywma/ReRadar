@@ -589,8 +589,8 @@ class TrainingDataset(data.Dataset):
 
 #                 # Geometric Verification (RANSAC)
 #                 H, mask, max_csc_num = rigidRansac(
-#                     (np.array([[im_side//2,im_side//2]]-points1)*0.4),
-#                     (np.array([[im_side//2,im_side//2]]-points2))*0.4
+#                     (np.array([[im_side//2,im_side//2]]-points1)*0.256),
+#                     (np.array([[im_side//2,im_side//2]]-points2))*0.256
 #                 )
 
 #                 q_pose = InferDataset.get_yaw(query_imu, query_timestamp, query_pose_file)
@@ -624,8 +624,8 @@ class TrainingDataset(data.Dataset):
                 
 #                 H = relative_H 
 #                 mat = cv2.getRotationMatrix2D((query_im.shape[0]//2, query_im.shape[0]//2), np.arctan2(-H[0,1], H[0,0])/np.pi*180, 1.0)
-#                 mat[0,2] -= H[1,2]/0.4
-#                 mat[1,2] -= H[0,2]/0.4
+#                 mat[0,2] -= H[1,2]/0.256
+#                 mat[1,2] -= H[0,2]/0.256
 #                 mat = np.vstack((mat,np.array([[0,0,1]])))
 #                 mat = np.linalg.inv(mat)[:2,:]
 #                 im_warp = cv2.warpAffine(db_im, mat, query_im.shape[:2])
@@ -666,127 +666,206 @@ class TrainingDataset(data.Dataset):
 #     else:
 #         return recalls_oord, results
 
-def evaluateResults(global_descs, datasets, local_feats=None, match_results_save_path=None):
-    if match_results_save_path is not None: 
-        os.system('mkdir -p ' + match_results_save_path)
+
+# import numpy as np
+# import faiss
+# from tqdm import tqdm
+
+def evaluateResults(global_descs, datasets, save_file_path="match_results.txt"):
+    """
+    Matches every query to the DB. 
+    Saves: [Query_Filename] [Predicted_DB_Filename] [Is_Correct]
+    If no ground truth exists for a query, 'is_correct' is labeled 'N/A' or 'False' 
+    to maintain the same indexing as the original code.
+    """
+    gt_thres = 25 
     
-    all_errs = []
-    gt_thres = 25
-    faiss_index = faiss.IndexFlatL2(global_descs[0].shape[1]) 
-    faiss_index.add(global_descs[0])
-
-    recalls_oord = []
-    results = []
-
-    db_pose_file = datasets[0].poses
+    # 1. Initialize FAISS with Database (Dataset 0)
+    db_descriptors = global_descs[0]
+    faiss_index = faiss.IndexFlatL2(db_descriptors.shape[1]) 
+    faiss_index.add(db_descriptors)
+    
+    # Get DB metadata
     db_timestamps = datasets[0].timestamps
-    db_imu = datasets[0].imu
-    db_positions = InferDataset.get_radar_positions(db_pose_file, db_timestamps)
+    db_positions_dict = InferDataset.get_radar_positions(datasets[0].poses, db_timestamps)
+    # Convert dict to array for fast distance checking
+    db_pos_array = np.array([db_positions_dict[ts] for ts in db_timestamps])
 
-    for i in range(1, len(datasets)):
-        _, predictions = faiss_index.search(global_descs[i], 1)
-        all_positives, tp, fn, fp, tn, bug = 0, 0, 0, 0, 0, 0
-        
-        query_pose_file = datasets[i].poses
-        query_timestamps = datasets[i].timestamps 
-        query_imu = datasets[i].imu 
-        query_positions = InferDataset.get_radar_positions(query_pose_file, query_timestamps)
+    with open(save_file_path, "w") as f:
+        f.write("query_filename db_filename is_correct\n")
 
-        for q_idx, pred in enumerate(tqdm(predictions, desc="Evaluating")):
-            query_timestamp = datasets[i].timestamps[q_idx]
-            if query_timestamp not in query_positions:
-                continue
+        for d_idx in range(1, len(datasets)):
+            # Search Top-1 for EVERY query in the dataset
+            _, predictions = faiss_index.search(global_descs[d_idx], 1)
             
-            pos1 = query_positions[query_timestamp]
-            pos2_list = np.array(list(db_positions.values()))
-            gt_dis = np.linalg.norm(pos2_list - pos1, axis=1)
-            positives = np.where(gt_dis < gt_thres)[0]  
+            query_timestamps = datasets[d_idx].timestamps
+            query_positions = InferDataset.get_radar_positions(datasets[d_idx].poses, query_timestamps)
 
-            if len(positives) > 0:
-                all_positives += 1
-                if pred[0] in positives: tp += 1
-                else: fn += 1
-            else:
-                if pred[0] in positives: fp += 1
-                else: tn += 1
-
-            # --- SIMPLIFIED DRAWING LOGIC ---
-            if match_results_save_path is not None and local_feats is not None:
-                index = pred[0]
+            for q_idx, pred in enumerate(tqdm(predictions, desc=f"Dataset {d_idx}")):
+                pred_idx = pred[0]
+                q_ts = query_timestamps[q_idx]
+                db_ts = db_timestamps[pred_idx]
                 
-                # Prepare Images
-                query_im = (datasets[i][q_idx][0].transpose(1,2,0)*256).astype(np.uint8)
-                db_im = (datasets[0][index][0].transpose(1,2,0)*256).astype(np.uint8)
-                im_side = db_im.shape[0]
-
-                # Get Keypoints and Descriptors
-                query_kps = datasets[i].getkeypoint(q_idx)
-                db_kps = datasets[0].getkeypoint(index)
-                q_feat_map = local_feats[i][q_idx]
-                db_feat_map = local_feats[0][index]
+                is_correct = "False" # Default
                 
-                query_des = np.array([q_feat_map[int(kp.pt[1]), int(kp.pt[0])] for kp in query_kps])
-                db_des = np.array([db_feat_map[int(kp.pt[1]), int(kp.pt[0])] for kp in db_kps])
+                # Check if GPS data exists for this specific query
+                if q_ts in query_positions:
+                    q_pos = query_positions[q_ts]
+                    
+                    # Identify ALL valid ground truth indices for this query (like your original code)
+                    # - Based on your logic: dises = np.sqrt(np.sum(((q_pose-self.pose_array)**2),axis=1))
+                    dist_to_all_db = np.linalg.norm(db_pos_array - q_pos, axis=1)
+                    gt_indices = np.where(dist_to_all_db < gt_thres)[0]
+                    
+                    # If the query HAS at least one physical match in the DB
+                    if len(gt_indices) > 0:
+                        if pred_idx in gt_indices:
+                            is_correct = "True"
+                        else:
+                            is_correct = "False"
+                    else:
+                        # Case: Query exists in dataset but has no physical location match in DB
+                        is_correct = "No_GT_Available"
                 
-                # Match
-                matcher = cv2.BFMatcher()
-                matches = matcher.knnMatch(query_des, db_des, k=2)
-                all_match = [m[0] for m in matches]
-                points1 = np.float32([query_kps[m.queryIdx].pt for m in all_match]) 
-                points2 = np.float32([db_kps[m.trainIdx].pt for m in all_match])
+                f.write(f"{q_ts} {db_ts} {is_correct}\n")
 
-                # RANSAC
-                H, mask, _ = rigidRansac(
-                    (np.array([[im_side//2, im_side//2]] - points1) * 0.256),
-                    (np.array([[im_side//2, im_side//2]] - points2) * 0.256)
-                )
+    print(f"Evaluation complete. Results saved to {save_file_path}")
 
-                # Error Calculation
-                q_pose = InferDataset.get_yaw(query_imu, query_timestamp, query_pose_file)
-                db_pose = InferDataset.get_yaw(db_imu, db_timestamps[index], db_pose_file)
-                relative_gt = np.linalg.inv(db_pose).dot(q_pose)
-                relative_H = np.vstack((H, np.array([[0,0,1]])))
-                err = np.linalg.inv(relative_H).dot(relative_gt)
-                err_theta = np.abs(np.arctan2(err[0,1], err[0,0])/np.pi*180)
-                err_trans = np.sqrt(err[0,2]**2 + err[1,2]**2)
-
-                if err_theta > 10 or err_trans > 25: bug += 1
-                all_errs.append([err_trans, err_theta])
-                                
-                # DRAW ONLY MATCHES
-                good_match = [all_match[k] for k in range(len(mask)) if mask[k]]
-                
-                # Create the simple side-by-side match image
-                match_vis = cv2.drawMatches(
-                    query_im, query_kps, 
-                    db_im, db_kps, 
-                    good_match, None, 
-                    flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
-                )
-                
-                # Overlay Error Text
-                # cv2.putText(match_vis, f"Trans Err: {err_trans:.2f}m", (20, 40), 
-                #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-                # cv2.putText(match_vis, f"Rot Err: {err_theta:.2f}deg", (20, 70), 
-                #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-                
-                # Save
-                cv2.imwrite(os.path.join(match_results_save_path, f"{q_idx:06d}.png"), match_vis)
-
-    # ... (Rest of the evaluation summary logic remains the same)
-    recall_top1 = tp / (tp + fn) if all_positives > 0 else 0
-    recalls_oord.append(recall_top1)
-    results.append({"TP": tp, "FN": fn, "FP": fp, "TN": tn, "AP": all_positives})
+# def evaluateResults(global_descs, datasets, local_feats=None, match_results_save_path=None):
+#     if match_results_save_path is not None: 
+#         os.system('mkdir -p ' + match_results_save_path)
     
-    if match_results_save_path is not None:
-        all_errs = np.array(all_errs)
-        if len(all_errs) > 0:
-            success_loc = (all_errs[:,0] < 25) & (all_errs[:,1] < 10)
-            success_rate = np.sum(success_loc) / all_positives if all_positives > 0 else 0
-            mean_trans_err = np.mean(all_errs[success_loc,0]) if np.any(success_loc) else 0
-            mean_rot_err = np.mean(all_errs[success_loc,1]) if np.any(success_loc) else 0
-        else:
-            success_rate, mean_trans_err, mean_rot_err = 0, 0, 0
-        return recalls_oord, success_rate, mean_trans_err, mean_rot_err, results
-    return recalls_oord, results
+#     all_errs = []
+#     gt_thres = 25
+#     faiss_index = faiss.IndexFlatL2(global_descs[0].shape[1]) 
+#     faiss_index.add(global_descs[0])
+
+#     recalls_oord = []
+#     results = []
+
+#     db_pose_file = datasets[0].poses
+#     db_timestamps = datasets[0].timestamps
+#     db_imu = datasets[0].imu
+#     db_positions = InferDataset.get_radar_positions(db_pose_file, db_timestamps)
+
+#     for i in range(1, len(datasets)):
+#         distances , predictions = faiss_index.search(global_descs[i], 1)
+#         # desc_threshold = 0.4
+#         all_positives, tp, fn, fp, tn, bug = 0, 0, 0, 0, 0, 0
+        
+#         query_pose_file = datasets[i].poses
+#         query_timestamps = datasets[i].timestamps 
+#         query_imu = datasets[i].imu 
+#         query_positions = InferDataset.get_radar_positions(query_pose_file, query_timestamps)
+
+#         for q_idx, pred in enumerate(tqdm(predictions, desc="Evaluating")):
+#             # is_accepted = distances[q_idx][0] < desc_threshold
+#             query_timestamp = datasets[i].timestamps[q_idx]
+#             if query_timestamp not in query_positions:
+#                 continue
+            
+#             pos1 = query_positions[query_timestamp]
+#             pos2_list = np.array(list(db_positions.values()))
+#             gt_dis = np.linalg.norm(pos2_list - pos1, axis=1)
+#             positives = np.where(gt_dis < gt_thres)[0]  
+
+#             if len(positives) > 0:
+#                 all_positives += 1
+#                 if pred[0] in positives: tp += 1
+#                 else: fn += 1
+#             else:
+#                 if pred[0] in positives: fp += 1
+#                 else: tn += 1
+
+#             # if is_accepted:
+#             #     # If the AI accepts the match, check if it's physically correct
+#             #     if pred[0] in positives:
+#             #         tp += 1
+#             #     else:
+#             #         fp += 1  
+#             # else:
+#             #     if len(positives) > 0:
+#             #         fn += 1  # AI rejected a place it should have known
+#             #     else:
+#             #         tn += 1  # AI correctly rejected a new place it hasn't seen
+
+#             # --- SIMPLIFIED DRAWING LOGIC ---
+#             if match_results_save_path is not None and local_feats is not None:
+#                 index = pred[0]
+                
+#                 # Prepare Images
+#                 query_im = (datasets[i][q_idx][0].transpose(1,2,0)*256).astype(np.uint8)
+#                 db_im = (datasets[0][index][0].transpose(1,2,0)*256).astype(np.uint8)
+#                 im_side = db_im.shape[0]
+
+#                 # Get Keypoints and Descriptors
+#                 query_kps = datasets[i].getkeypoint(q_idx)
+#                 db_kps = datasets[0].getkeypoint(index)
+#                 q_feat_map = local_feats[i][q_idx]
+#                 db_feat_map = local_feats[0][index]
+                
+#                 query_des = np.array([q_feat_map[int(kp.pt[1]), int(kp.pt[0])] for kp in query_kps])
+#                 db_des = np.array([db_feat_map[int(kp.pt[1]), int(kp.pt[0])] for kp in db_kps])
+                
+#                 # Match
+#                 matcher = cv2.BFMatcher()
+#                 matches = matcher.knnMatch(query_des, db_des, k=2)
+#                 all_match = [m[0] for m in matches]
+#                 points1 = np.float32([query_kps[m.queryIdx].pt for m in all_match]) 
+#                 points2 = np.float32([db_kps[m.trainIdx].pt for m in all_match])
+
+#                 # RANSAC
+#                 H, mask, _ = rigidRansac(
+#                     (np.array([[im_side//2, im_side//2]] - points1) * 0.256),
+#                     (np.array([[im_side//2, im_side//2]] - points2) * 0.256)
+#                 )
+
+#                 # Error Calculation
+#                 q_pose = InferDataset.get_yaw(query_imu, query_timestamp, query_pose_file)
+#                 db_pose = InferDataset.get_yaw(db_imu, db_timestamps[index], db_pose_file)
+#                 relative_gt = np.linalg.inv(db_pose).dot(q_pose)
+#                 relative_H = np.vstack((H, np.array([[0,0,1]])))
+#                 err = np.linalg.inv(relative_H).dot(relative_gt)
+#                 err_theta = np.abs(np.arctan2(err[0,1], err[0,0])/np.pi*180)
+#                 err_trans = np.sqrt(err[0,2]**2 + err[1,2]**2)
+
+#                 if err_theta > 10 or err_trans > 25: bug += 1
+#                 all_errs.append([err_trans, err_theta])
+                                
+#                 # DRAW ONLY MATCHES
+#                 good_match = [all_match[k] for k in range(len(mask)) if mask[k]]
+                
+#                 # Create the simple side-by-side match image
+#                 match_vis = cv2.drawMatches(
+#                     query_im, query_kps, 
+#                     db_im, db_kps, 
+#                     good_match, None, 
+#                     flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+#                 )
+                
+#                 # Overlay Error Text
+#                 # cv2.putText(match_vis, f"Trans Err: {err_trans:.2f}m", (20, 40), 
+#                 #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+#                 # cv2.putText(match_vis, f"Rot Err: {err_theta:.2f}deg", (20, 70), 
+#                 #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                
+#                 # Save
+#                 cv2.imwrite(os.path.join(match_results_save_path, f"{q_idx:06d}.png"), match_vis)
+
+#     # ... (Rest of the evaluation summary logic remains the same)
+#     recall_top1 = tp / (tp + fn) if all_positives > 0 else 0
+#     recalls_oord.append(recall_top1)
+#     results.append({"TP": tp, "FN": fn, "FP": fp, "TN": tn, "AP": all_positives})
+    
+#     if match_results_save_path is not None:
+#         all_errs = np.array(all_errs)
+#         if len(all_errs) > 0:
+#             success_loc = (all_errs[:,0] < 25) & (all_errs[:,1] < 10)
+#             success_rate = np.sum(success_loc) / all_positives if all_positives > 0 else 0
+#             mean_trans_err = np.mean(all_errs[success_loc,0]) if np.any(success_loc) else 0
+#             mean_rot_err = np.mean(all_errs[success_loc,1]) if np.any(success_loc) else 0
+#         else:
+#             success_rate, mean_trans_err, mean_rot_err = 0, 0, 0
+#         return recalls_oord, success_rate, mean_trans_err, mean_rot_err, results
+#     return recalls_oord, results
 

@@ -54,7 +54,7 @@ def get_args():
 
     # parser.add_argument('--load_from', type=str, default='runs/Aug08_10-17-29', help='Path to load checkpoint from, for resuming training or testing.')# original model 
     # parser.add_argument('--load_from', type=str, default='runs/Jan07_17-57-05', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 24-26, temp 0.1 
-    parser.add_argument('--load_from', type=str, default='', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 24-26, temp 0.1 
+    parser.add_argument('--load_from', type=str, default='runs/re50_kitti_oord0', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 24-26, temp 0.1 
 
 
     parser.add_argument('--ckpt', type=str, default='best', 
@@ -684,7 +684,7 @@ if __name__ == "__main__":
     elif opt.mode.lower() == 'test':
         print('===> Running evaluation step')
         print('====> Extracting Features of OORD and calculating recalls')
-        eval_seq = [('Maree_1','Maree_2')]
+        # eval_seq = [('Maree_1','Maree_2')]
         # eval_seq = [('Bellmouth_2', 'Bellmouth_1')]
         # eval_seq = [('Hydro_1','Hydro_2') ]#, ('Hydro_2', 'Hydro_1')]
         # eval_seq =  [('Bellmouth_2', 'Bellmouth_1'),
@@ -694,7 +694,7 @@ if __name__ == "__main__":
         #             ('Hydro_1','Hydro_2'),
         #             ('Hydro_1','Hydro_3'),
         #             ('Maree_1','Maree_2')]
-        # eval_seq = [('Twolochs_2', 'Twolochs_1')]
+        eval_seq = [('Twolochs_2', 'Twolochs_1')]
         for sub_seq in eval_seq:
             print(f"Processing {sub_seq}")
             eval_datasets = []

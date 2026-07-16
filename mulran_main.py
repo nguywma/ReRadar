@@ -372,7 +372,7 @@ if __name__ == "__main__":
 
     print('===> Building model')
 
-    from REIN import REIN
+    from model.RE50REIN import REIN
 
     model = REIN()
     model = model.cuda()
@@ -503,16 +503,17 @@ if __name__ == "__main__":
 
         print('====> Extracting Features of KITTI and calculating recalls')
         # eval_seq =  ['KAIST03','DCC01', 'Riverside03' ]
-        eval_seq =['Riverside03']
+        eval_seq =['KAIST03']
 
         for seq in eval_seq:   
             recalls_kitti = []
-            test_set = mulran_dataset.InferDataset(seq=seq,sample_inteval=5)  #return a very large local feature mat could be very slow. sample the dataset to reduce ram and time cost
-            local_feats, global_descs = infer(test_set, return_local_feats=True)
-            # global_descs = infer(test_set, return_local_feats=False) 
+            test_set = mulran_dataset.InferDataset(seq=seq,sample_inteval=1)  #return a very large local feature mat could be very slow. sample the dataset to reduce ram and time cost
+            # local_feats, global_descs = infer(test_set, return_local_feats=True)
+            global_descs = infer(test_set, return_local_feats=False) 
             out_name = './' + seq +'/'
-            recall_top1, success_rate, mean_trans_err, mean_rot_err = mulran_dataset.evaluateResults(seq, global_descs, local_feats, test_set, out_name)
+            # recall_top1, success_rate, mean_trans_err, mean_rot_err = mulran_dataset.evaluateResults(seq, global_descs, local_feats, test_set, out_name)
             # recall_top1 = mulran_dataset.evaluateResults(seq, global_descs, None, test_set)
+            recall_top1 = mulran_dataset.evaluateResults(global_descs, test_set)
             # recalls_kitti.append(recall_top1)
 
             # mean_recall = np.mean(recalls_kitti)
@@ -530,9 +531,9 @@ if __name__ == "__main__":
             print(f'\n################# Mulran {seq} Result ########################')
             # print(f'Sequence: {seq}')
             print('Recall@1: %0.2f' % (recall_top1 * 100))
-            print('Success rate: %0.2f' % (success_rate * 100))
-            print('Mean Trans. Err.: %0.2f' % mean_trans_err)
-            print('Mean Rot. Err.: %0.2f' % mean_rot_err)
+            # print('Success rate: %0.2f' % (success_rate * 100))
+            # print('Mean Trans. Err.: %0.2f' % mean_trans_err)
+            # print('Mean Rot. Err.: %0.2f' % mean_rot_err)
             print('################################################################\n')
 
         # print('====> Extracting Features of NCLT and calculating recalls')
