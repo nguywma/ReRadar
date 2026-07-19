@@ -424,7 +424,7 @@ if __name__ == "__main__":
 
 
         print('===> Loading dataset(s)')
-        train_sequences = ['KAIST03']#, 'KAIST02', 'Riverside01', 'Sejong03']
+        train_sequences = ['KAIST02', 'DCC02', 'Riverside01', 'Sejong03']
         train_subset = []
         for seq in train_sequences:
             train_subset.append(mulran_dataset.TrainingDataset(seq=seq))
@@ -449,7 +449,7 @@ if __name__ == "__main__":
 
             print('===> Testing')
             recalls_mulran = []
-            for seq in ['DCC01', 'KAIST02', 'Riverside01', 'Sejong03']:   
+            for seq in ['DCC01', 'KAIST03', 'Riverside01', 'Sejong03']:   
                 test_set = mulran_dataset.InferDataset(seq=seq)
                 global_descs = infer(test_set)
                 recall_top1 = mulran_dataset.evaluateResults(seq, global_descs, None, test_set)
@@ -512,8 +512,8 @@ if __name__ == "__main__":
             global_descs = infer(test_set, return_local_feats=False) 
             out_name = './' + seq +'/'
             # recall_top1, success_rate, mean_trans_err, mean_rot_err = mulran_dataset.evaluateResults(seq, global_descs, local_feats, test_set, out_name)
-            # recall_top1 = mulran_dataset.evaluateResults(seq, global_descs, None, test_set)
-            recall_top1 = mulran_dataset.evaluateResults(global_descs, test_set)
+            recall_top1 = mulran_dataset.evaluateResults(seq, global_descs, None, test_set)
+            # recall_top1 = mulran_dataset.evaluateResults(global_descs, test_set)
             # recalls_kitti.append(recall_top1)
 
             # mean_recall = np.mean(recalls_kitti)
