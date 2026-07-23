@@ -448,7 +448,7 @@ class TrainingDataset(data.Dataset):
         self.neg_thres = 25 # 
 
         # compute pos and negs for each query
-        self.num_neg = 10
+        self.num_neg = 14
         self.positives = []
         self.negatives = []
         for qi in range(len(self.poses)):

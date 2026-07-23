@@ -26,18 +26,14 @@ import oord_dataset
 import matplotlib.pyplot as plt
 from loss import TripletLoss, InfoNCE
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Set the visible GPUs
-
 def get_args():
-    parser = argparse.ArgumentParser(description='BEVPlace++')
+    parser = argparse.ArgumentParser(description='ReRadar')
     parser.add_argument('--mode', type=str, default='test', help='Mode', choices=['train', 'test'])
     parser.add_argument('--path', type=str, default='../../oord_data/', help='dataset path')
-    parser.add_argument('--batchSize', type=int, default=8,  
+    parser.add_argument('--batchSize', type=int, default=2,  
             help='Number of triplets (query, pos, negs). Each triplet consists of 12 images.')
-    # parser.add_argument('--cacheBatchSize', type=int, default=128, help='Batch size for caching and testing')
     parser.add_argument('--cacheBatchSize', type=int, default=8, help='Batch size for caching and testing')
     parser.add_argument('--nEpochs', type=int, default=60, help='number of epochs to train for')
-    parser.add_argument('--nGPU', type=int, default=2, help='number of GPU to use.')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning Rate.')
     parser.add_argument('--lrStep', type=float, default=10, help='Decay LR ever N steps.')
     parser.add_argument('--lrGamma', type=float, default=0.5, help='Multiply LR by Gamma for decaying.')
@@ -46,15 +42,13 @@ def get_args():
     parser.add_argument('--loss', type=str, default='infonce', choices=['triplet','infonce'])
     parser.add_argument('--threads', type=int, default=16, help='Number of threads for each data loader to use')
     parser.add_argument('--seed', type=int, default=1024, help='Random seed to use.')
-
+    parser.add_argument('--pose', type=bool, default=False, help="Estimate pose, set False if place recognition only")
 
     parser.add_argument('--runsPath', type=str, default='./runs/', help='Path to save runs to.')
     parser.add_argument('--cachePath', type=str, default='./cache/', help='Path to save cache to.')
-    parser.add_argument('--network', type=str, default='rerein', choices=['rein', 'e18rein','e34rein','erein', 'rerein'])
+    parser.add_argument('--network', type=str, default='rerein', help='network architecture')
 
-    # parser.add_argument('--load_from', type=str, default='runs/Aug08_10-17-29', help='Path to load checkpoint from, for resuming training or testing.')# original model 
-    # parser.add_argument('--load_from', type=str, default='runs/Jan07_17-57-05', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 24-26, temp 0.1 
-    parser.add_argument('--load_from', type=str, default='runs/re50_kitti_oord0', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 24-26, temp 0.1 
+    parser.add_argument('--load_from', type=str, default='runs/re50_kitti_oord0', help='Path to load checkpoint from, for resuming training or testing.') 
 
 
     parser.add_argument('--ckpt', type=str, default='best', 
@@ -442,6 +436,8 @@ if __name__ == "__main__":
         from model.E34REIN import REIN
     elif opt.network == 'rerein':
         from model.RE50REIN import REIN
+    elif opt.network == 'resnet':
+        from model.R50REIN import REIN
     else:
         raise ValueError(f"Unknown network: {opt.network}")
 
@@ -561,58 +557,6 @@ if __name__ == "__main__":
         scheduler = None 
         best_score = 0  
 
-        # for epoch in range(opt.nEpochs):
-        #     avg_loss = train_epoch(epoch, model, train_set)
-        #     print('===> Testing')
-
-        #     # Evaluate on each validation sequence
-        #     recalls_oord = []
-        #     val_losses = []
-
-        #     eval_seq =  [('Bellmouth_2', 'Bellmouth_1'),
-        #     ('Twolochs_2', 'Twolochs_1'),
-        #     ('Hydro_1','Hydro_3'),
-        #     ('Maree_1','Maree_2')]
-        #     eval_datasets = []
-        #     eval_global_descs = []
-
-        #     for seq in eval_seq:
-        #         test_set = oord_dataset.InferDataset(seq=seq,dataset_path=opt.path)
-        #         val_set = oord_dataset.TrainingDataset(seq=seq)
-        #         # Infer for recall
-        #         global_descs = infer(test_set)
-        #         eval_global_descs.append(global_descs)
-        #         eval_datasets.append(test_set)
-
-        #         # ALSO calculate validation loss
-        #         val_loss = validate_epoch(model, val_set)
-        #         val_losses.append(val_loss)
-
-        #     recalls_oord, _ = oord_dataset.evaluateResults(eval_global_descs, eval_datasets)
-
-        #     for ii in range(len(recalls_oord)):
-        #         writer.add_scalars('val/recall', {'OORD_' + eval_seq[ii+1]: recalls_oord[ii]}, epoch)
-        #         writer.add_scalars('val/loss', {'OORD_' + eval_seq[ii+1]: val_losses[ii]}, epoch)
-
-        #     mean_recall = np.mean(recalls_oord)
-        #     mean_val_loss = np.mean(val_losses)
-            
-        #     print('===> Mean Recall on OORD : %0.2f'%(mean_recall*100))
-        #     print('===> Mean Validation Loss: %.6f' % mean_val_loss)
-
-        #     is_best = mean_recall > best_score 
-        #     if is_best: best_score = mean_recall
-
-        #     saveCheckpoint({
-        #             'epoch': epoch,
-        #             'state_dict': model.state_dict(),
-        #             'recalls': mean_recall,
-        #             'best_score': best_score,
-        #             'optimizer' : optimizer.state_dict(),
-        #     }, is_best, logdir)
-
-        #     with open(join(logdir, 'epoch_losses.txt'), 'a') as f:
-        #         f.write(f"Epoch {epoch}: Val Loss = {mean_val_loss:.6f}, Mean Recall = {mean_recall:.4f}\n")
         for epoch in range(opt.nEpochs):
             if opt.loss == 'triplet':
                 avg_loss = train_epoch(epoch, model, train_set)
@@ -686,15 +630,15 @@ if __name__ == "__main__":
         print('====> Extracting Features of OORD and calculating recalls')
         # eval_seq = [('Maree_1','Maree_2')]
         # eval_seq = [('Bellmouth_2', 'Bellmouth_1')]
-        # eval_seq = [('Hydro_1','Hydro_2') ]#, ('Hydro_2', 'Hydro_1')]
-        # eval_seq =  [('Bellmouth_2', 'Bellmouth_1'),
-        #             # ('Bellmouth_2','Bellmouth_3'),
-        #             # ('Bellmouth_2','Bellmouth_4'),
-        #             ('Twolochs_2', 'Twolochs_1'),
-        #             ('Hydro_1','Hydro_2'),
-        #             ('Hydro_1','Hydro_3'),
-        #             ('Maree_1','Maree_2')]
-        eval_seq = [('Twolochs_2', 'Twolochs_1')]
+        # eval_seq = [('Hydro_1','Hydro_2')]
+        # eval_seq = [('Twolochs_2', 'Twolochs_1')]
+        eval_seq =  [('Bellmouth_2', 'Bellmouth_1'),
+                    # ('Bellmouth_2','Bellmouth_3'),
+                    # ('Bellmouth_2','Bellmouth_4'),
+                    ('Twolochs_2', 'Twolochs_1'),
+                    ('Hydro_1','Hydro_2'),
+                    ('Hydro_1','Hydro_3'),
+                    ('Maree_1','Maree_2')]
         for sub_seq in eval_seq:
             print(f"Processing {sub_seq}")
             eval_datasets = []
@@ -704,15 +648,19 @@ if __name__ == "__main__":
             for seq in sub_seq:   
                 test_set = oord_dataset.InferDataset(seq=seq,dataset_path=opt.path, sample_inteval=5)   
                 test_set.printpath()
-                # local_feats, global_descs = infer(test_set,return_local_feats=True, cache_path= seq + '.h5', permute_local=(0,2,3,1))
-                global_descs = infer(test_set,return_local_feats=False)
+                if opt.pose:
+                    local_feats, global_descs = infer(test_set,return_local_feats=True, cache_path= seq + '.h5', permute_local=(0,2,3,1))
+                    eval_local_feats.append(local_feats)
+                else:
+                    global_descs = infer(test_set,return_local_feats=False)
                 eval_global_descs.append(global_descs)
                 eval_datasets.append(test_set)
-                # eval_local_feats.append(local_feats)
 
             out_name = sub_seq[0] + '_' + sub_seq[1] + '_4paper/'
-            #recalls_oord,success_rate,mean_trans_err,mean_rot_err,result = oord_dataset.evaluateResults(eval_global_descs, eval_datasets, eval_local_feats, out_name)
-            recalls_oord, result = oord_dataset.evaluateResults(eval_global_descs, eval_datasets)
+            if opt.pose:
+                recalls_oord,success_rate,mean_trans_err,mean_rot_err,result = oord_dataset.evaluateResults(eval_global_descs, eval_datasets, eval_local_feats, out_name)
+            else:
+                recalls_oord, result = oord_dataset.evaluateResults(eval_global_descs, eval_datasets)
             
             print('\n################# Recall avg on OORD ########################\n')
             mean_recall = np.mean(recalls_oord)
@@ -739,7 +687,8 @@ if __name__ == "__main__":
             print(f"Recall@1: {recall:.2f}")
             print(f"Precision: {precision:.2f}")
             print(f"F1 Score: {f1_score:.2f}")
-            #print(f"Pose success rate: {success_rate:.2f}")
-            #print(f"Mean translational error: {mean_trans_err:.2f}")
-            #print(f"Mean rotation error: {mean_rot_err:.2f}")
+            if opt.pose:
+                print(f"Pose success rate: {success_rate:.2f}")
+                print(f"Mean translational error: {mean_trans_err:.2f}")
+                print(f"Mean rotation error: {mean_rot_err:.2f}")
 

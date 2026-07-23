@@ -673,65 +673,65 @@ def evaluateResults(global_descs, datasets, local_feats=None, match_results_save
 
 
 #Evaluate function for file saving used for visualization 
-def evaluateResults(global_descs, datasets, save_file_path="match_results.txt"):
-    """
-    Matches every query to the DB. 
-    Saves: [Query_Filename] [Predicted_DB_Filename] [Is_Correct]
-    If no ground truth exists for a query, 'is_correct' is labeled 'N/A' or 'False' 
-    to maintain the same indexing as the original code.
-    """
-    gt_thres = 25 
+# def evaluateResults(global_descs, datasets, save_file_path="match_results.txt"):
+#     """
+#     Matches every query to the DB. 
+#     Saves: [Query_Filename] [Predicted_DB_Filename] [Is_Correct]
+#     If no ground truth exists for a query, 'is_correct' is labeled 'N/A' or 'False' 
+#     to maintain the same indexing as the original code.
+#     """
+#     gt_thres = 25 
     
-    # 1. Initialize FAISS with Database (Dataset 0)
-    db_descriptors = global_descs[0]
-    faiss_index = faiss.IndexFlatL2(db_descriptors.shape[1]) 
-    faiss_index.add(db_descriptors)
+#     # 1. Initialize FAISS with Database (Dataset 0)
+#     db_descriptors = global_descs[0]
+#     faiss_index = faiss.IndexFlatL2(db_descriptors.shape[1]) 
+#     faiss_index.add(db_descriptors)
     
-    # Get DB metadata
-    db_timestamps = datasets[0].timestamps
-    db_positions_dict = InferDataset.get_radar_positions(datasets[0].poses, db_timestamps)
-    # Convert dict to array for fast distance checking
-    db_pos_array = np.array([db_positions_dict[ts] for ts in db_timestamps])
+#     # Get DB metadata
+#     db_timestamps = datasets[0].timestamps
+#     db_positions_dict = InferDataset.get_radar_positions(datasets[0].poses, db_timestamps)
+#     # Convert dict to array for fast distance checking
+#     db_pos_array = np.array([db_positions_dict[ts] for ts in db_timestamps])
 
-    with open(save_file_path, "w") as f:
-        f.write("query_filename db_filename is_correct\n")
+#     with open(save_file_path, "w") as f:
+#         f.write("query_filename db_filename is_correct\n")
 
-        for d_idx in range(1, len(datasets)):
-            # Search Top-1 for EVERY query in the dataset
-            _, predictions = faiss_index.search(global_descs[d_idx], 1)
+#         for d_idx in range(1, len(datasets)):
+#             # Search Top-1 for EVERY query in the dataset
+#             _, predictions = faiss_index.search(global_descs[d_idx], 1)
             
-            query_timestamps = datasets[d_idx].timestamps
-            query_positions = InferDataset.get_radar_positions(datasets[d_idx].poses, query_timestamps)
+#             query_timestamps = datasets[d_idx].timestamps
+#             query_positions = InferDataset.get_radar_positions(datasets[d_idx].poses, query_timestamps)
 
-            for q_idx, pred in enumerate(tqdm(predictions, desc=f"Dataset {d_idx}")):
-                pred_idx = pred[0]
-                q_ts = query_timestamps[q_idx]
-                db_ts = db_timestamps[pred_idx]
+#             for q_idx, pred in enumerate(tqdm(predictions, desc=f"Dataset {d_idx}")):
+#                 pred_idx = pred[0]
+#                 q_ts = query_timestamps[q_idx]
+#                 db_ts = db_timestamps[pred_idx]
                 
-                is_correct = "False" # Default
+#                 is_correct = "False" # Default
                 
-                # Check if GPS data exists for this specific query
-                if q_ts in query_positions:
-                    q_pos = query_positions[q_ts]
+#                 # Check if GPS data exists for this specific query
+#                 if q_ts in query_positions:
+#                     q_pos = query_positions[q_ts]
                     
-                    # Identify ALL valid ground truth indices for this query (like your original code)
-                    # - Based on your logic: dises = np.sqrt(np.sum(((q_pose-self.pose_array)**2),axis=1))
-                    dist_to_all_db = np.linalg.norm(db_pos_array - q_pos, axis=1)
-                    gt_indices = np.where(dist_to_all_db < gt_thres)[0]
+#                     # Identify ALL valid ground truth indices for this query (like your original code)
+#                     # - Based on your logic: dises = np.sqrt(np.sum(((q_pose-self.pose_array)**2),axis=1))
+#                     dist_to_all_db = np.linalg.norm(db_pos_array - q_pos, axis=1)
+#                     gt_indices = np.where(dist_to_all_db < gt_thres)[0]
                     
-                    # If the query HAS at least one physical match in the DB
-                    if len(gt_indices) > 0:
-                        if pred_idx in gt_indices:
-                            is_correct = "True"
-                        else:
-                            is_correct = "False"
-                    else:
-                        # Case: Query exists in dataset but has no physical location match in DB
-                        is_correct = "No_GT_Available"
+#                     # If the query HAS at least one physical match in the DB
+#                     if len(gt_indices) > 0:
+#                         if pred_idx in gt_indices:
+#                             is_correct = "True"
+#                         else:
+#                             is_correct = "False"
+#                     else:
+#                         # Case: Query exists in dataset but has no physical location match in DB
+#                         is_correct = "No_GT_Available"
                 
-                f.write(f"{q_ts} {db_ts} {is_correct}\n")
+#                 f.write(f"{q_ts} {db_ts} {is_correct}\n")
 
-    print(f"Evaluation complete. Results saved to {save_file_path}")
+#     print(f"Evaluation complete. Results saved to {save_file_path}")
 
 
 #evaluation function with simplified image saving
