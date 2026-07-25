@@ -617,7 +617,7 @@ if __name__ == "__main__":
 
     elif opt.mode.lower() == 'test':
         print('===> Running evaluation step')
-        print('====> Extracting Features of OORD and calculating recalls')
+        # print('====> Extracting Features of OORD and calculating recalls')
         # eval_seq = [('Maree_1','Maree_2')]
         # eval_seq = [('Bellmouth_2', 'Bellmouth_1')]
         # eval_seq = [('Hydro_1','Hydro_2')]
@@ -629,7 +629,14 @@ if __name__ == "__main__":
         #             ('Hydro_1','Hydro_2'),
         #             ('Hydro_1','Hydro_3'),
         #             ('Maree_1','Maree_2')]
-        eval_seq = [('boreas-2020-11-26-13-58', 'boreas-2021-01-26-11-22')]
+        print('====> Extracting Features of boreas and calculating recalls')
+        # snow / snow, snowing / sun, snow / construction / rainning 
+        # eval_seq = [('boreas-2020-11-26-13-58', 'boreas-2021-01-26-11-22')
+        #             ,('boreas-2020-11-26-13-58', 'boreas-2021-03-02-13-38')
+        #             ,('boreas-2020-11-26-13-58','boreas-2021-03-23-12-43'),
+        #             ('boreas-2020-11-26-13-58','boreas-2021-04-29-15-55')]
+        eval_seq = [('boreas-2021-03-02-13-38','boreas-2020-11-26-13-58' )]
+
         for sub_seq in eval_seq:
             print(f"Processing {sub_seq}")
             eval_datasets = []
