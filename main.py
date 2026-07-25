@@ -22,14 +22,15 @@ from tqdm import tqdm
 import faiss
 
 import kitti_dataset
-import oord_dataset
+# import oord_dataset
+import boreas_dataset as oord_dataset 
 import matplotlib.pyplot as plt
 from loss import TripletLoss, InfoNCE
 
 def get_args():
     parser = argparse.ArgumentParser(description='ReRadar')
     parser.add_argument('--mode', type=str, default='test', help='Mode', choices=['train', 'test'])
-    parser.add_argument('--path', type=str, default='../../oord_data/', help='dataset path')
+    parser.add_argument('--path', type=str, default='../../oord_data/', help='dataset root path')
     parser.add_argument('--batchSize', type=int, default=2,  
             help='Number of triplets (query, pos, negs). Each triplet consists of 12 images.')
     parser.add_argument('--cacheBatchSize', type=int, default=8, help='Batch size for caching and testing')
@@ -42,7 +43,7 @@ def get_args():
     parser.add_argument('--loss', type=str, default='infonce', choices=['triplet','infonce'])
     parser.add_argument('--threads', type=int, default=16, help='Number of threads for each data loader to use')
     parser.add_argument('--seed', type=int, default=1024, help='Random seed to use.')
-    parser.add_argument('--pose', type=bool, default=False, help="Estimate pose, set False if place recognition only")
+    parser.add_argument('--pose', type=bool, default=False, help="Evaluate pose estimation, set False for place recognition only")
 
     parser.add_argument('--runsPath', type=str, default='./runs/', help='Path to save runs to.')
     parser.add_argument('--cachePath', type=str, default='./cache/', help='Path to save cache to.')
@@ -355,11 +356,6 @@ def infer(eval_set, return_local_feats=False, cache_path='local_feats_cache.h5',
         return dset_local, global_feats_final
     else:
         return global_feats_final
-    
-def testPCA(eval_set, epoch=0, write_tboard=False):
-    # TODO global descriptor PCA for faster inference speed
-    pass
-    # return recalls
 
 def getClusters(cluster_set, num_feat=128, num_cluster = 64):
     n_descriptors = 10000
@@ -428,12 +424,6 @@ if __name__ == "__main__":
 
     if opt.network == 'rein':
         from model.REIN import REIN
-    elif opt.network == 'erein':
-        from model.EREIN import REIN
-    elif opt.network == 'e18rein':
-        from model.E18REIN import REIN
-    elif opt.network == 'e34rein':
-        from model.E34REIN import REIN
     elif opt.network == 'rerein':
         from model.RE50REIN import REIN
     elif opt.network == 'resnet':
@@ -632,13 +622,14 @@ if __name__ == "__main__":
         # eval_seq = [('Bellmouth_2', 'Bellmouth_1')]
         # eval_seq = [('Hydro_1','Hydro_2')]
         # eval_seq = [('Twolochs_2', 'Twolochs_1')]
-        eval_seq =  [('Bellmouth_2', 'Bellmouth_1'),
-                    # ('Bellmouth_2','Bellmouth_3'),
-                    # ('Bellmouth_2','Bellmouth_4'),
-                    ('Twolochs_2', 'Twolochs_1'),
-                    ('Hydro_1','Hydro_2'),
-                    ('Hydro_1','Hydro_3'),
-                    ('Maree_1','Maree_2')]
+        # eval_seq =  [('Bellmouth_2', 'Bellmouth_1'),
+        #             # ('Bellmouth_2','Bellmouth_3'),
+        #             # ('Bellmouth_2','Bellmouth_4'),
+        #             ('Twolochs_2', 'Twolochs_1'),
+        #             ('Hydro_1','Hydro_2'),
+        #             ('Hydro_1','Hydro_3'),
+        #             ('Maree_1','Maree_2')]
+        eval_seq = [('boreas-2020-11-26-13-58', 'boreas-2021-01-26-11-22')]
         for sub_seq in eval_seq:
             print(f"Processing {sub_seq}")
             eval_datasets = []

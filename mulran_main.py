@@ -25,63 +25,38 @@ from tqdm import tqdm
 import faiss
 
 import kitti_dataset
-import nclt_dataset 
 import mulran_dataset
-
-#os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 
 def get_args():
     parser = argparse.ArgumentParser(description='BEVPlace++')
     parser.add_argument('--mode', type=str, default='test', help='Mode', choices=['train', 'test'])
     
-    parser.add_argument('--batchSize', type=int, default=4, 
+    parser.add_argument('--batchSize', type=int, default=2, 
             help='Number of triplets (query, pos, negs). Each triplet consists of 12 images.')
-    parser.add_argument('--cacheBatchSize', type=int, default= 4 , help='Batch size for caching and testing')
+    parser.add_argument('--cacheBatchSize', type=int, default= 8, help='Batch size for caching and testing')
     parser.add_argument('--nEpochs', type=int, default=50, help='number of epochs to train for')
-    parser.add_argument('--nGPU', type=int, default=2, help='number of GPU to use.')
     parser.add_argument('--lr', type=float, default=0.00001, help='Learning Rate.')
     parser.add_argument('--lrStep', type=float, default=10, help='Decay LR ever N steps.')
     parser.add_argument('--lrGamma', type=float, default=0.5, help='Multiply LR by Gamma for decaying.')
     parser.add_argument('--weightDecay', type=float, default=0.001, help='Weight decay for SGD.')
     parser.add_argument('--momentum', type=float, default=0.9, help='Momentum for SGD.')
+    parser.add_argument('--path', type=str, default='../../mulran', help='dataset root path')
 
     parser.add_argument('--threads', type=int, default=16, help='Number of threads for each data loader to use')
     parser.add_argument('--seed', type=int, default=1024, help='Random seed to use.')
-    parser.add_argument('--loss', type=str, default='triplet', choices=['triplet', 'infonce'], help='Loss function to use.')
-
+    parser.add_argument('--loss', type=str, default='infonce', choices=['triplet', 'infonce'], help='Loss function to use.')
 
     parser.add_argument('--runsPath', type=str, default='./runs/', help='Path to save runs to.')
     parser.add_argument('--cachePath', type=str, default='./cache/', help='Path to save cache to.')
-
-
-    # parser.add_argument('--load_from', type=str, default='runs/Jan19_09-45-27', help='Path to load checkpoint from, for resuming training or testing.') #mulran mix, low lr, infonce
-    # parser.add_argument('--load_from', type=str, default='runs/Aug08_10-17-29', help='Path to load checkpoint from, for resuming training or testing.')
-    parser.add_argument('--load_from', type=str, default='runs/Jan17_12-54-42', help='Path to load checkpoint from, for resuming training or testing.')#mulran mix, low lr,triplet
-    # parser.add_argument('--load_from', type=str, default='runs/Jan08_13-56-08', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 25-30, temp 0.1
-    # parser.add_argument('--load_from', type=str, default='runs/Jul17_13-09-51', help='Path to load checkpoint from, for resuming training or testing.')#for cartesian image
-    # parser.add_argument('--load_from', type=str, default='runs/Jan05_18-06-03', help='Path to load checkpoint from, for resuming training or testing.')#triplet, pos-neg = 25-30
-    # parser.add_argument('--load_from', type=str, default='runs/Jan07_17-57-05', help='Path to load checkpoint from, for resuming training or testing.')#infonce, pos-neg = 24-26, temp 0.1 , oord 
-
+    parser.add_argument('--load_from', type=str, default='runs/re50_kitti', help='Path to load checkpoint from, for resuming training or testing.')#mulran mix, low lr,triplet
+    parser.add_argument('--pose', type=bool, default=False, help='Evaluate pose estimation, set False for place recognition only')
+    parser.add_argument('--network', type=str, default='rerein', help='Network architecture')
     parser.add_argument('--ckpt', type=str, default='best', 
             help='Load_from from latest or best checkpoint.', choices=['latest', 'best'])
     
 
     opt = parser.parse_args()
     return opt
-
-# class TripletLoss(nn.Module):
-#     def __init__(self):
-#         super(TripletLoss, self).__init__()
-#         self.margin = 0.3
-
-#     def forward(self, anchor, positive, negative):
-        
-#         pos_dist = torch.sqrt((anchor - positive).pow(2).sum())
-#         neg_dist = torch.sqrt((anchor - negative).pow(2).sum(1))
-        
-#         loss = F.relu(pos_dist-neg_dist + self.margin)
-#         return loss#.mean()
-
 
 def train_epoch(epoch, model, train_set):
     
@@ -94,32 +69,6 @@ def train_epoch(epoch, model, train_set):
     
     model.eval()
     
-
-    # if epoch>=0:
-    #     print('====> Building Cache for Hard Mining')
-    #     train_set.mining=False
-    #     train_set.cache = join(opt.cachePath, 'train_feat_cache.hdf5')
-    #     with h5py.File(train_set.cache, mode='w') as h5: 
-    #         pool_size = model.global_feat_dim
-
-    #         h5feat = h5.create_dataset("features", 
-    #                 [len(train_set), pool_size], 
-    #                 dtype=np.float32)
-    #         training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, 
-    #             batch_size=opt.batchSize, shuffle=False, 
-    #             collate_fn=kitti_dataset.collate_fn)
-    #         with torch.no_grad():
-    #             for iteration, (query, positives, negatives, indices) in enumerate(training_data_loader, 1):
-                    
-    #                 query = query.to(device)
-    #                 _, _, global_descs = model(query)
-    #                 h5feat[indices, :] = global_descs.detach().cpu().numpy()
-    #     train_set.mining=True
-    #     train_set.refreshCache()
-        
-    # training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, 
-    #             batch_size=opt.batchSize, shuffle=True, 
-    #             collate_fn=kitti_dataset.collate_fn)
     if epoch >= 0:
         print('====> Building Cache for Hard Mining')
         # We must tell the underlying datasets they are NOT mining yet
@@ -371,8 +320,15 @@ if __name__ == "__main__":
     torch.cuda.manual_seed(opt.seed)
 
     print('===> Building model')
-
-    from model.RE50REIN import REIN
+    
+    if opt.network == 'rein':
+        from model.REIN import REIN
+    elif opt.network == 'rerein':
+        from model.RE50REIN import REIN
+    elif opt.network == 'resnet':
+        from model.R50REIN import REIN
+    else:
+        raise ValueError(f"Unknown network: {opt.network}")
 
     model = REIN()
     model = model.cuda()
@@ -427,16 +383,13 @@ if __name__ == "__main__":
         train_sequences = ['KAIST02', 'DCC02', 'Riverside01', 'Sejong03']
         train_subset = []
         for seq in train_sequences:
-            train_subset.append(mulran_dataset.TrainingDataset(seq=seq))
+            train_subset.append(mulran_dataset.TrainingDataset(dataset_path=opt.path, seq=seq))
 
         train_set = ConcatDataset(train_subset)
 
         # initilize model weights
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, 
             model.parameters()), lr=opt.lr)    
-    
-        
-            
 
         best_score = 0
 
@@ -450,38 +403,13 @@ if __name__ == "__main__":
             print('===> Testing')
             recalls_mulran = []
             for seq in ['DCC01', 'KAIST03', 'Riverside01', 'Sejong03']:   
-                test_set = mulran_dataset.InferDataset(seq=seq)
+                test_set = mulran_dataset.InferDataset(seq=seq, dataset_path=opt.path)
                 global_descs = infer(test_set)
                 recall_top1 = mulran_dataset.evaluateResults(seq, global_descs, None, test_set)
                 recalls_mulran.append(recall_top1)
                 writer.add_scalars('val', {'MULRAN_'+seq: recall_top1}, epoch)
             mean_recall = np.mean(recalls_mulran)
             print('===> Mean Recall on MULRAN: %0.2f'%(mean_recall*100))
-            # recalls_kitti = []
-            # for seq in ['00', '02', '05', '06','08']:
-            #     test_set = kitti_dataset.InferDataset(seq=seq)   
-            #     global_descs = infer(test_set)
-            #     recall_top1 = kitti_dataset.evaluateResults(seq, global_descs, None, test_set)
-            #     recalls_kitti.append(recall_top1)
-
-            #     writer.add_scalars('val', {'KITTI_'+seq: recall_top1}, epoch)
-
-            # eval_seq =  ['2012-01-15', '2012-02-04', '2012-03-17', '2012-06-15', '2012-09-28', '2012-11-16', '2013-02-23']
-            # eval_datasets = []
-            # eval_global_descs = []
-            # for seq in eval_seq:   
-
-            #     test_set = nclt_dataset.InferDataset(seq=seq)   
-            #     global_descs = infer(test_set)
-            #     eval_global_descs.append(global_descs)
-            #     eval_datasets.append(test_set)
-            
-            # recalls_nclt = nclt_dataset.evaluateResults(eval_global_descs, eval_datasets)# (q_descs, db_descs, q_dataset, db_dataset)
-            # for ii in range(len(recalls_nclt)):
-            #     writer.add_scalars('val', {'NCLT_'+eval_seq[ii+1]: recalls_nclt[ii]}, epoch)
-
-            # print('===> Mean Recall on KITTI: %0.2f'%(np.mean(recalls_kitti)*100))
-            # print('===> Mean Recall on NCLT : %0.2f'%(np.mean(recalls_nclt)*100))
 
             is_best = mean_recall > best_score 
             if is_best:   best_score = mean_recall
@@ -499,62 +427,25 @@ if __name__ == "__main__":
 
     elif opt.mode.lower() == 'test':
         print('===> Running evaluation step')
-        
-
         print('====> Extracting Features of KITTI and calculating recalls')
         # eval_seq =  ['KAIST03','DCC01', 'Riverside03' ]
         eval_seq =['KAIST03']
 
         for seq in eval_seq:   
             recalls_kitti = []
-            test_set = mulran_dataset.InferDataset(seq=seq,sample_inteval=1)  #return a very large local feature mat could be very slow. sample the dataset to reduce ram and time cost
-            # local_feats, global_descs = infer(test_set, return_local_feats=True)
-            global_descs = infer(test_set, return_local_feats=False) 
-            out_name = './' + seq +'/'
-            # recall_top1, success_rate, mean_trans_err, mean_rot_err = mulran_dataset.evaluateResults(seq, global_descs, local_feats, test_set, out_name)
-            recall_top1 = mulran_dataset.evaluateResults(seq, global_descs, None, test_set)
-            # recall_top1 = mulran_dataset.evaluateResults(global_descs, test_set)
-            # recalls_kitti.append(recall_top1)
+            test_set = mulran_dataset.InferDataset(seq=seq, dataset_path=opt.path, sample_inteval=5)
+            if opt.pose:
+                local_feats, global_descs = infer(test_set, return_local_feats=True)
+                out_name = './' + seq +'/'
+                recall_top1, success_rate, mean_trans_err, mean_rot_err = mulran_dataset.evaluateResults(seq, global_descs, local_feats, test_set, out_name)
+            else:
+                global_descs = infer(test_set, return_local_feats=False) 
+                recall_top1 = mulran_dataset.evaluateResults(seq, global_descs, None, test_set)
 
-            # mean_recall = np.mean(recalls_kitti)
-            # print('\n################# Recall @ top 1 on Mulran ########################\n')
-            # for ii in range(len(eval_seq)):
-            #     print('%s: %0.2f'%(eval_seq[ii], recalls_kitti[ii]*100))
-
-            # print('mean: %0.2f'%(mean_recall*100))
-            # print(f'################# Global Loc Results on Mulran {seq} ##################\n')
-
-            # print('Success rate: %0.2f; Mean Trans. Err.: %0.2f; Mean Rot. Err.: %0.2f'%(success_rate*100, mean_trans_err, mean_rot_err))
-
-            
-            # print('\n')
             print(f'\n################# Mulran {seq} Result ########################')
-            # print(f'Sequence: {seq}')
             print('Recall@1: %0.2f' % (recall_top1 * 100))
-            # print('Success rate: %0.2f' % (success_rate * 100))
-            # print('Mean Trans. Err.: %0.2f' % mean_trans_err)
-            # print('Mean Rot. Err.: %0.2f' % mean_rot_err)
+            if opt.pose:
+                print('Success rate: %0.2f' % (success_rate * 100))
+                print('Mean Trans. Err.: %0.2f' % mean_trans_err)
+                print('Mean Rot. Err.: %0.2f' % mean_rot_err)
             print('################################################################\n')
-
-        # print('====> Extracting Features of NCLT and calculating recalls')
-        # eval_seq =  ['2012-01-15', '2012-02-04', '2012-03-17', '2012-06-15', '2012-09-28', '2012-11-16', '2013-02-23']
-        # eval_datasets = []
-        # eval_global_descs = []
-        # for seq in eval_seq:   
-
-        #     test_set = nclt_dataset.InferDataset(seq=seq)   
-        #     global_descs = infer(test_set)
-        #     eval_global_descs.append(global_descs)
-        #     eval_datasets.append(test_set)
-        
-        # recalls_nclt = nclt_dataset.evaluateResults(eval_global_descs, eval_datasets)# (q_descs, db_descs, q_dataset, db_dataset)
-
-        # print('\n################# Recall @ top 1 on NCLT ########################\n')
-        # mean_recall = np.mean(recalls_nclt)
-
-
-        # for ii in range(len(eval_seq[1:])):
-        #     print('%s: %0.2f'%(eval_seq[ii+1], recalls_nclt[ii]*100))
-        
-        # print('mean: %0.2f'%(mean_recall*100))
-
